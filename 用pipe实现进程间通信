@@ -1,0 +1,55 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+
+int main() {
+    int pipefd[2]; // 管道文件描述符数组，pipefd[0]用于读取，pipefd[1]用于写入
+    pid_t pid;
+
+    // 创建管道
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        exit(EXIT_FAILURE);
+    }
+
+    // 创建子进程
+    pid = fork();
+
+    if (pid == -1) {
+        perror("fork");
+        exit(EXIT_FAILURE);
+    }
+
+    if (pid == 0) { // 子进程
+        close(pipefd[1]); // 关闭写入端，子进程只需要读取
+        dup2(pipefd[0], 0); // 将管道读取端重定向到标准输入
+        close(pipefd[0]); // 关闭多余的文件描述符
+
+        // 在子进程中执行 mpg123
+        execl("/usr/bin/mpg123", "mpg123", "-", NULL);
+
+        // 如果 execl 失败，则输出错误信息
+        perror("execl");
+        exit(EXIT_FAILURE);
+    } else { // 父进程
+        close(pipefd[0]); // 关闭读取端，父进程只需要写入
+
+        // 向子进程写入音频数据
+        const char *audioData = "path_to_your_audio_file.mp3"; // 替换为你的音频文件路径
+        write(pipefd[1], audioData, strlen(audioData));
+        close(pipefd[1]); // 写入完成后关闭写入端
+
+        // 等待子进程结束
+        int status;
+        waitpid(pid, &status, 0);
+
+        if (WIFEXITED(status)) {
+            printf("子进程已退出，退出码：%d\n", WEXITSTATUS(status));
+        }
+    }
+
+    return 0;
+}
